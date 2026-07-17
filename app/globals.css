@@ -405,6 +405,55 @@ body::after {
   color: rgba(22, 17, 46, 0.5);
 }
 
+/* ---------- grid (drag-to-connect board) ---------- */
+
+.grid-board {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+  width: 100%;
+  margin: 0 auto;
+  touch-action: none; /* without this, the browser eats the drag as page-scroll */
+  -webkit-user-select: none;
+  user-select: none;
+}
+.grid-cell {
+  aspect-ratio: 1;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #ffffff 0%, #efe9ff 60%, #ded3ff 100%);
+  color: var(--ink);
+  font-family: var(--font-display), sans-serif;
+  font-weight: 700;
+  font-size: clamp(20px, 6vw, 28px);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -5px 0 rgba(120, 100, 180, 0.3),
+    0 4px 0 #2b2159;
+  transition: background 0.08s ease, color 0.08s ease, transform 0.08s ease, box-shadow 0.08s ease;
+}
+.grid-cell .val {
+  font-size: 8px;
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  color: rgba(22, 17, 46, 0.5);
+}
+.grid-cell.sel {
+  background: linear-gradient(180deg, #b48bff, var(--purple));
+  color: #fff;
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), 0 1px 0 #4a2f8a, var(--glow-blue);
+}
+.grid-cell.sel .val {
+  color: rgba(255, 255, 255, 0.6);
+}
+
 /* ---------- buttons ---------- */
 
 .actions {

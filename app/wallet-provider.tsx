@@ -1,7 +1,13 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { connect as rawConnect, injectedProvider } from "@/lib/wallet";
+import {
+  connect as rawConnect,
+  injectedProvider,
+  disconnectActive,
+  subscribeActiveProviderEvents,
+  restoreWalletConnectSession,
+} from "@/lib/wallet";
 
 type WalletState = {
   account: `0x${string}` | null;
@@ -39,7 +45,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setConnecting(true);
     try {
-      setAccount(await rawConnect());
+      const addr = await rawConnect();
+      setAccount(addr);
+      // rawConnect() may have activated either the injected or the WalletConnect provider —
+      // (re)subscribe now that it's known which one.
+      subscribeActiveProviderEvents(
+        (a) => setAccount(a?.[0] ? (a[0] as `0x${string}`) : null),
+        () => setAccount(null),
+      );
     } catch (e: any) {
       const m = e?.shortMessage || e?.message || String(e);
       setError(/user rejected/i.test(m) ? "Connection cancelled." : m);
@@ -48,21 +61,37 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const disconnect = useCallback(() => setAccount(null), []);
+  const disconnect = useCallback(() => {
+    void disconnectActive(); // best-effort session teardown (WalletConnect); no-op for injected
+    setAccount(null);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") setNameState(localStorage.getItem("wb_name") || "");
-    const eth = injectedProvider();
-    if (!eth) return;
-    eth
-      .request?.({ method: "eth_accounts" })
-      .then((a: string[]) => {
-        if (a?.[0]) setAccount(a[0] as `0x${string}`);
-      })
-      .catch(() => {});
+
     const onAccounts = (a: string[]) => setAccount(a?.[0] ? (a[0] as `0x${string}`) : null);
-    eth.on?.("accountsChanged", onAccounts);
-    return () => eth.removeListener?.("accountsChanged", onAccounts);
+    const onDisconnect = () => setAccount(null);
+
+    const eth = injectedProvider();
+    if (eth) {
+      eth
+        .request?.({ method: "eth_accounts" })
+        .then((a: string[]) => {
+          if (a?.[0]) setAccount(a[0] as `0x${string}`);
+        })
+        .catch(() => {});
+      return subscribeActiveProviderEvents(onAccounts, onDisconnect);
+    }
+
+    // No injected wallet — silently restore a previous WalletConnect session, if any.
+    let unsubscribe: (() => void) | undefined;
+    restoreWalletConnectSession().then((addr) => {
+      if (addr) {
+        setAccount(addr);
+        unsubscribe = subscribeActiveProviderEvents(onAccounts, onDisconnect);
+      }
+    });
+    return () => unsubscribe?.();
   }, []);
 
   // First time a wallet connects without a name → simple registration.

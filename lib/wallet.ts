@@ -1,5 +1,12 @@
 // Wallet + chain plumbing. Plain viem over window.ethereum — MiniPay injects it and
 // auto-connects; no wagmi/connector libraries needed (per Celo's MiniPay guide).
+//
+// WalletConnect (below) is an additive fallback for wallets that don't inject a provider
+// (desktop browsers, mobile wallets connecting via QR scan). It's just another EIP-1193
+// provider — @walletconnect/ethereum-provider implements the same .request()/.on() shape as
+// window.ethereum, so it slots into the same viem custom() transport. No wagmi, no ethers,
+// no connect-modal UI framework. Dynamically imported so MiniPay users (the majority) never
+// pay for its bundle.
 
 import {
   createPublicClient,
@@ -12,7 +19,7 @@ import {
   type WalletClient,
 } from "viem";
 import { celo } from "viem/chains";
-import { CHAIN_ID, RPC_URL, FEE_CURRENCY } from "./config";
+import { CHAIN_ID, RPC_URL, FEE_CURRENCY, WC_PROJECT_ID } from "./config";
 
 // Use viem's built-in celo chain on mainnet (it carries the CIP-64 fee-currency formatter);
 // a plain chain object is enough for testnet where gas is paid in CELO.
@@ -58,8 +65,88 @@ export function hasWallet(): boolean {
   return Boolean(ethereum());
 }
 
+// ---- WalletConnect (additive fallback when there's no injected provider) ----
+
+let wcProvider: any = null;
+let wcInitPromise: Promise<any> | null = null;
+let activeSource: "injected" | "walletconnect" = "injected";
+
+async function getWalletConnectProvider(): Promise<any> {
+  if (wcProvider) return wcProvider;
+  if (!wcInitPromise) {
+    wcInitPromise = import("@walletconnect/ethereum-provider").then(({ EthereumProvider }) =>
+      EthereumProvider.init({
+        projectId: WC_PROJECT_ID,
+        chains: [CHAIN_ID],
+        showQrModal: true,
+        rpcMap: { [CHAIN_ID]: RPC_URL },
+        metadata: {
+          name: "WordBreak",
+          description: "Spell words. Smash bricks. Win cUSD.",
+          url: "https://wordbreak-fe.vercel.app",
+          icons: ["https://wordbreak-fe.vercel.app/icon.png"],
+        },
+      }),
+    );
+  }
+  wcProvider = await wcInitPromise;
+  return wcProvider;
+}
+
+// The provider whose transport walletClient()/sendWrite() should use right now.
+function activeProvider(): any {
+  return activeSource === "walletconnect" ? wcProvider : ethereum();
+}
+
+// Best-effort, silent: if a WalletConnect session already exists from a previous visit,
+// restore it without popping the QR modal again. Only runs when there's no injected wallet —
+// the MiniPay-majority case never pays this SDK's bootstrap cost.
+export async function restoreWalletConnectSession(): Promise<`0x${string}` | null> {
+  if (hasWallet() || !WC_PROJECT_ID) return null;
+  try {
+    const p = await getWalletConnectProvider();
+    if (p.session && p.accounts?.[0]) {
+      activeSource = "walletconnect";
+      return p.accounts[0] as `0x${string}`;
+    }
+  } catch {
+    /* best-effort — a broken/expired persisted session just means no silent restore */
+  }
+  return null;
+}
+
+// Ends a WalletConnect pairing session properly (local state alone would leave it dangling).
+// No-op for the injected-provider path — there's no "session" to tear down there.
+export async function disconnectActive(): Promise<void> {
+  if (activeSource === "walletconnect" && wcProvider) {
+    try {
+      await wcProvider.disconnect();
+    } catch {
+      /* best-effort */
+    }
+  }
+  activeSource = "injected";
+}
+
+// Subscribes to the currently active provider's account/disconnect events. Returns an
+// unsubscribe function. Call again after any successful connect() — the active provider may
+// have changed.
+export function subscribeActiveProviderEvents(
+  onAccountsChanged: (accounts: string[]) => void,
+  onDisconnect: () => void,
+): () => void {
+  const p = activeProvider();
+  if (!p?.on) return () => {};
+  p.on("accountsChanged", onAccountsChanged);
+  p.on("disconnect", onDisconnect);
+  return () => {
+    p.removeListener?.("accountsChanged", onAccountsChanged);
+    p.removeListener?.("disconnect", onDisconnect);
+  };
+}
+
 export function walletClient(): WalletClient {
-  const eth = ethereum();
+  const eth = activeProvider();
   if (!eth) throw new Error("No wallet found");
   return createWalletClient({ chain, transport: custom(eth) });
 }
@@ -90,18 +177,33 @@ async function ensureChain(eth: any): Promise<void> {
   }
 }
 
-export async function connect(): Promise<`0x${string}`> {
+async function connectInjected(): Promise<`0x${string}`> {
   const eth = ethereum();
-  if (!eth) {
-    throw new Error(
-      "No wallet detected. On desktop install MetaMask; on phone open WordBreak inside MiniPay or Valora.",
-    );
-  }
   const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
   const address = accounts?.[0];
   if (!address) throw new Error("Wallet connected but returned no account.");
   await ensureChain(eth).catch(() => {}); // don't block connect if network switch is declined
+  activeSource = "injected";
   return address as `0x${string}`;
+}
+
+async function connectWalletConnect(): Promise<`0x${string}`> {
+  const p = await getWalletConnectProvider();
+  const accounts: string[] = await p.enable();
+  const address = accounts?.[0];
+  if (!address) throw new Error("Wallet connected but returned no account.");
+  activeSource = "walletconnect";
+  return address as `0x${string}`;
+}
+
+// Injected wallet (MiniPay, MetaMask, ...) if present, else WalletConnect QR pairing if
+// configured, else the original "no wallet" error — unchanged behavior when WC isn't set up.
+export async function connect(): Promise<`0x${string}`> {
+  if (hasWallet()) return connectInjected();
+  if (WC_PROJECT_ID) return connectWalletConnect();
+  throw new Error(
+    "No wallet detected. On desktop install MetaMask; on phone open WordBreak inside MiniPay or Valora.",
+  );
 }
 
 // Gas-in-stablecoin only makes sense on mainnet MiniPay; undefined elsewhere.

@@ -270,7 +270,7 @@ export default function Daily() {
 
         {!address ? (
           <button className="btn primary" onClick={onConnect}>
-            {hasWallet() ? "Connect wallet" : "Open in MiniPay to play"}
+            {hasWallet() ? "Connect wallet" : "🔗 Connect wallet"}
           </button>
         ) : (
           <>

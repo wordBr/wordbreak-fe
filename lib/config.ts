@@ -20,3 +20,8 @@ export const CONTINUE_PRICE = BigInt(process.env.NEXT_PUBLIC_CONTINUE_PRICE || "
 export const CONTINUE_SECONDS = Number(process.env.NEXT_PUBLIC_CONTINUE_SECONDS || "30");
 
 export const isConfigured = () => Boolean(POOLS_ADDRESS && CUSD_ADDRESS);
+
+// WalletConnect (QR pairing) — an additive fallback for wallets that don't inject
+// window.ethereum (desktop browsers, mobile wallets connecting via scan). Get a project ID
+// from https://dashboard.walletconnect.com. Unset = the feature is inert, no behavior change.
+export const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
