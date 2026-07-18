@@ -20,7 +20,8 @@ if (WC_PROJECT_ID) {
       url: "https://wordbreak-fe.vercel.app",
       icons: ["https://wordbreak-fe.vercel.app/icon.png"],
     },
-    features: { email: true, socials: ["google", "x", "discord"] },
+    features: { email: true, socials: ["google", "x", "discord"], emailShowWallets: true },
+    allWallets: "SHOW",
   });
 }
 
