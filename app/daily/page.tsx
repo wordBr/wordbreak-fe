@@ -39,7 +39,7 @@ type LB = { rank: number; address: string; score: number; words: number }[];
 type View = "loading" | "no-pool" | "lobby" | "playing" | "done";
 
 export default function Daily() {
-  const { account: address, connect: onConnect } = useWallet();
+  const { account: address, name, connect: onConnect } = useWallet();
   const [view, setView] = useState<View>("loading");
   const [info, setInfo] = useState<DailyInfo | null>(null);
   const [round, setRound] = useState<Round | null>(null);
@@ -136,6 +136,7 @@ export default function Daily() {
       await publicClient.waitForTransactionReceipt({ hash: eh });
       await refreshChain(address, roundId);
     } catch (e) {
+      console.error("enterPool failed:", e);
       setError(errMsg(e));
     } finally {
       setBusy(null);
@@ -153,6 +154,7 @@ export default function Daily() {
       await publicClient.waitForTransactionReceipt({ hash: h });
       await refreshChain(address, roundId);
     } catch (e) {
+      console.error("claim failed:", e);
       setError(errMsg(e));
     } finally {
       setBusy(null);
@@ -272,7 +274,7 @@ export default function Daily() {
           <button className="btn primary" onClick={onConnect}>Connect wallet</button>
         ) : (
           <>
-            <div className="addr mono">{short(address)}{entered ? " · entered ✓" : ""}</div>
+            <div className="addr mono">{name || short(address)}{entered ? " · entered ✓" : ""}</div>
             {busy && <div className="tx-note">{busy}</div>}
             {!entered && roundOpen && (
               <button className="btn primary" onClick={enterPool} disabled={!!busy}>
@@ -292,7 +294,7 @@ export default function Daily() {
         )}
 
         {error && <div className="tx-note err">{error}</div>}
-        <Leaderboard rows={leaderboard} me={address} />
+        <Leaderboard rows={leaderboard} me={address} myName={name} />
       </main>
     );
   }
@@ -348,7 +350,7 @@ export default function Daily() {
           <div className="big">{score}</div>
           <div className="big-lbl">your score</div>
           {claimable > 0n && <button className="btn win" onClick={claim} disabled={!!busy}>Claim {cusd(claimable)}</button>}
-          <Leaderboard rows={leaderboard} me={address} />
+          <Leaderboard rows={leaderboard} me={address} myName={name} />
           <button className="btn" style={{ marginTop: 14 }} onClick={() => setView("lobby")}>Back to pool</button>
         </div>
       )}
@@ -374,17 +376,22 @@ function Header({ timeLeft, showTimer }: { timeLeft: number; showTimer: boolean 
   );
 }
 
-function Leaderboard({ rows, me }: { rows: LB; me: `0x${string}` | null }) {
+function Leaderboard(
+  { rows, me, myName }: { rows: LB; me: `0x${string}` | null; myName?: string },
+) {
   if (!rows.length) return <div className="lb-empty">No scores yet — be first.</div>;
   return (
     <div className="lb">
-      {rows.slice(0, 10).map((r) => (
-        <div className={`lb-row ${me && r.address.toLowerCase() === me.toLowerCase() ? "me" : ""}`} key={r.address}>
-          <span className="lb-rank mono">{r.rank}</span>
-          <span className="lb-addr mono">{short(r.address as `0x${string}`)}</span>
-          <span className="lb-score mono">{r.score}</span>
-        </div>
-      ))}
+      {rows.slice(0, 10).map((r) => {
+        const isMe = !!me && r.address.toLowerCase() === me.toLowerCase();
+        return (
+          <div className={`lb-row ${isMe ? "me" : ""}`} key={r.address}>
+            <span className="lb-rank mono">{r.rank}</span>
+            <span className="lb-addr mono">{isMe && myName ? myName : short(r.address as `0x${string}`)}</span>
+            <span className="lb-score mono">{r.score}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
