@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Fredoka, Space_Mono, Instrument_Sans } from "next/font/google";
-import { headers } from "next/headers";
 import "./globals.css";
 import { WalletProvider } from "./wallet-provider";
-import { AppKitProvider } from "./appkit-provider";
+import { Providers } from "./providers";
 
 const display = Fredoka({
   subsets: ["latin"],
@@ -46,14 +45,13 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const cookies = (await headers()).get("cookie");
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>
-        <AppKitProvider cookies={cookies}>
+        <Providers>
           <WalletProvider>{children}</WalletProvider>
-        </AppKitProvider>
+        </Providers>
       </body>
     </html>
   );
