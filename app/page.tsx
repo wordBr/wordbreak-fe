@@ -101,6 +101,15 @@ export default function Game() {
   const [balance, setBalance] = useState<bigint | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+  const [addrCopied, setAddrCopied] = useState(false);
+
+  const copyAddress = () => {
+    if (!account) return;
+    navigator.clipboard.writeText(account).then(() => {
+      setAddrCopied(true);
+      setTimeout(() => setAddrCopied(false), 1500);
+    });
+  };
 
   // cUSD balance for the profile
   useEffect(() => {
@@ -467,7 +476,18 @@ export default function Game() {
               </button>
             </>
           )}
-          <div className="profile-addr mono">{account ? shortAddr(account) : "Wallet not connected"}</div>
+          {account ? (
+            <button
+              className="profile-addr mono"
+              style={{ background: "none", border: "none", cursor: "pointer" }}
+              onClick={copyAddress}
+              aria-label="Copy wallet address"
+            >
+              {addrCopied ? "Copied ✓" : `${shortAddr(account)} · copy`}
+            </button>
+          ) : (
+            <div className="profile-addr mono">Wallet not connected</div>
+          )}
         </div>
 
         <div className="pool-stats" style={{ marginBottom: 4 }}>
